@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Inter, Arial, Helvetica, sans-serif;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-report,
+  #printable-report *,
+  #printable-bill,
+  #printable-bill * {
+    visibility: visible;
+  }
+  #printable-report,
+  #printable-bill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
