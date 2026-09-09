@@ -40,35 +40,35 @@ export default function ReportsPage() {
       </Card>
 
       <div id="printable-report" className="space-y-4">
-        <h2 className="text-lg font-semibold text-neutral-900">Report for {month}</h2>
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Report for {month}</h2>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatCard label="Milk Sales" value={formatCurrency(milkTotal)} sub={`${milkQty.toFixed(1)} L total`} />
-          <StatCard label="Net Profit" value={formatCurrency(milkTotal)} accent="text-emerald-600" />
-          <StatCard label="Pending Payments" value={formatCurrency(pendingMilk)} accent="text-amber-600" />
+          <StatCard label="Net Profit" value={formatCurrency(milkTotal)} accent="text-emerald-600 dark:text-emerald-400" />
+          <StatCard label="Pending Payments" value={formatCurrency(pendingMilk)} accent="text-amber-600 dark:text-amber-400" />
         </div>
 
         <Card>
-          <p className="mb-3 text-sm font-semibold text-neutral-700">Milk Sales by Session</p>
+          <p className="mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300">Milk Sales by Session</p>
           <div className="grid grid-cols-3 gap-3 text-center">
             {(["Morning", "Afternoon", "Night"] as Session[]).map((s) => (
               <div key={s}>
-                <p className="text-xs text-neutral-400">{s}</p>
-                <p className="mt-1 font-semibold text-neutral-900">{formatCurrency(bySession(s))}</p>
+                <p className="text-xs text-neutral-400 dark:text-neutral-500">{s}</p>
+                <p className="mt-1 font-semibold text-neutral-900 dark:text-neutral-100">{formatCurrency(bySession(s))}</p>
               </div>
             ))}
           </div>
         </Card>
 
         <Card>
-          <p className="mb-3 text-sm font-semibold text-neutral-700">Milk Sales by Type</p>
+          <p className="mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300">Milk Sales by Type</p>
           {byMilkType.every((m) => m.qty === 0) ? (
             <EmptyState text="No milk sales this month." />
           ) : (
             <table className="w-full text-sm">
               <tbody>
                 {byMilkType.map((m) => (
-                  <tr key={m.name} className="border-b border-neutral-100">
+                  <tr key={m.name} className="border-b border-neutral-100 dark:border-neutral-800">
                     <td className="py-1.5">{m.name}</td>
                     <td className="py-1.5 text-right">{m.qty.toFixed(1)} L</td>
                     <td className="py-1.5 text-right font-medium">{formatCurrency(m.amount)}</td>

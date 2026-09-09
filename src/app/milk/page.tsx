@@ -11,15 +11,17 @@ const SESSIONS: Session[] = ["Morning", "Afternoon", "Night"];
 const STATUSES: PaymentStatus[] = ["Paid", "Pending", "Partial"];
 
 function MilkPageInner() {
-  const { data, addMilkEntry, deleteMilkEntry } = useData();
+  const { data, addMilkEntry, updateMilkEntry, deleteMilkEntry } = useData();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [open, setOpen] = useState(searchParams.get("add") === "1");
+  const [editingEntry, setEditingEntry] = useState<MilkEntry | null>(null);
   const [filterMonth, setFilterMonth] = useState(currentMonthStr());
   const [filterSession, setFilterSession] = useState<Session | "All">("All");
 
   const closeModal = () => {
     setOpen(false);
+    setEditingEntry(null);
     router.replace("/milk");
   };
 
@@ -59,7 +61,7 @@ function MilkPageInner() {
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold text-neutral-700">
+          <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
             {filterMonth} {filterSession !== "All" && `· ${filterSession}`}
           </p>
           <p className="text-sm font-bold text-emerald-600">{formatCurrency(total)}</p>
@@ -70,7 +72,7 @@ function MilkPageInner() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px] text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400">
+                <tr className="border-b border-neutral-200 dark:border-neutral-800 text-left text-xs uppercase text-neutral-400 dark:text-neutral-500">
                   <th className="py-2 pr-2">Date</th>
                   <th className="py-2 pr-2">Session</th>
                   <th className="py-2 pr-2">Type</th>
@@ -85,7 +87,7 @@ function MilkPageInner() {
                 {filtered.map((e) => {
                   const mt = data.milkTypes.find((m) => m.id === e.milkTypeId);
                   return (
-                    <tr key={e.id} className="border-b border-neutral-100">
+                    <tr key={e.id} className="border-b border-neutral-100 dark:border-neutral-800">
                       <td className="py-2 pr-2">{e.date}</td>
                       <td className="py-2 pr-2">{e.session}</td>
                       <td className="py-2 pr-2">{mt?.name ?? e.itemName ?? "—"}</td>
@@ -98,12 +100,20 @@ function MilkPageInner() {
                         <StatusBadge status={e.paymentStatus} />
                       </td>
                       <td className="py-2 pr-2 text-right">
-                        <button
-                          onClick={() => deleteMilkEntry(e.id)}
-                          className="text-xs text-red-500 hover:underline"
-                        >
-                          Delete
-                        </button>
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => {
+                              setEditingEntry(e);
+                              setOpen(true);
+                            }}
+                            className="text-xs text-indigo-600 hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button onClick={() => deleteMilkEntry(e.id)} className="text-xs text-red-500 dark:text-red-400 hover:underline">
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -114,11 +124,13 @@ function MilkPageInner() {
         )}
       </Card>
 
-      <Modal open={open} onClose={closeModal} title="Add Milk Entry">
+      <Modal open={open} onClose={closeModal} title={editingEntry ? "Edit Milk Entry" : "Add Milk Entry"}>
         <MilkForm
           milkTypes={data.milkTypes}
+          initial={editingEntry ?? undefined}
           onSubmit={(entry) => {
-            addMilkEntry(entry);
+            if (editingEntry) updateMilkEntry(editingEntry.id, entry);
+            else addMilkEntry(entry);
             closeModal();
           }}
         />
@@ -137,28 +149,30 @@ export default function MilkPage() {
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
   const colors: Record<PaymentStatus, string> = {
-    Paid: "bg-emerald-100 text-emerald-700",
-    Pending: "bg-amber-100 text-amber-700",
-    Partial: "bg-blue-100 text-blue-700",
+    Paid: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
+    Pending: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+    Partial: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400",
   };
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status]}`}>{status}</span>;
 }
 
 function MilkForm({
   milkTypes,
+  initial,
   onSubmit,
 }: {
   milkTypes: { id: string; name: string; defaultUnit: string; defaultRate: number }[];
+  initial?: MilkEntry;
   onSubmit: (e: Omit<MilkEntry, "id" | "createdAt">) => void;
 }) {
-  const [session, setSession] = useState<Session>("Morning");
-  const [milkTypeId, setMilkTypeId] = useState(milkTypes[0]?.id ?? "");
-  const [itemName, setItemName] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [unit, setUnit] = useState(milkTypes[0]?.defaultUnit ?? "Litre");
-  const [rate, setRate] = useState(String(milkTypes[0]?.defaultRate ?? ""));
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("Pending");
-  const [notes, setNotes] = useState("");
+  const [session, setSession] = useState<Session>(initial?.session ?? "Morning");
+  const [milkTypeId, setMilkTypeId] = useState(initial?.milkTypeId ?? milkTypes[0]?.id ?? "other");
+  const [itemName, setItemName] = useState(initial?.itemName ?? "");
+  const [quantity, setQuantity] = useState(initial ? String(initial.quantity) : "");
+  const [unit, setUnit] = useState(initial?.unit ?? milkTypes[0]?.defaultUnit ?? "Litre");
+  const [rate, setRate] = useState(initial ? String(initial.rate) : String(milkTypes[0]?.defaultRate ?? ""));
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(initial?.paymentStatus ?? "Pending");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isOther = milkTypeId === "other";
@@ -194,7 +208,7 @@ function MilkForm({
     e.preventDefault();
     if (!validate()) return;
     onSubmit({
-      date: todayStr(),
+      date: initial?.date ?? todayStr(),
       session,
       milkTypeId,
       itemName: isOther ? itemName.trim() : undefined,
@@ -245,9 +259,9 @@ function MilkForm({
         />
         <Input label="Rate" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} error={errors.rate} />
       </div>
-      <div className="rounded-md bg-neutral-100 px-3 py-2 text-sm">
-        <span className="text-neutral-500">Total: </span>
-        <span className="font-semibold text-neutral-900">{formatCurrency(total)}</span>
+      <div className="rounded-md bg-neutral-100 dark:bg-neutral-800 px-3 py-2 text-sm">
+        <span className="text-neutral-500 dark:text-neutral-400">Total: </span>
+        <span className="font-semibold text-neutral-900 dark:text-neutral-100">{formatCurrency(total)}</span>
       </div>
       <Select label="Payment Status" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value as PaymentStatus)}>
         {STATUSES.map((s) => (

@@ -1,89 +1,39 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import {
-  AppData,
-  DEFAULT_MILK_TYPES,
-  DEFAULT_PRODUCTS,
-  Expense,
-  MilkEntry,
-  MilkType,
-  Product,
-  ProductSale,
-  Customer,
-} from "./types";
-
-const STORAGE_KEY = "milk-management-data-v1";
-const MILK_MONTH_PREFIX = "milk-management-milk-";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { AppData, Expense, MilkEntry, MilkType } from "./types";
+import { useAuth } from "./auth";
 
 const emptyData: AppData = {
-  milkTypes: DEFAULT_MILK_TYPES,
+  milkTypes: [],
   milkEntries: [],
-  products: DEFAULT_PRODUCTS,
-  productSales: [],
   expenses: [],
-  customers: [],
 };
-
-function monthOf(dateStr: string): string {
-  return dateStr.slice(0, 7);
-}
-
-function loadData(): AppData {
-  if (typeof window === "undefined") return emptyData;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return { ...emptyData, ...parsed, milkEntries: loadAllMilkEntries() };
-  } catch {
-    return emptyData;
-  }
-}
-
-function loadAllMilkEntries(): MilkEntry[] {
-  if (typeof window === "undefined") return [];
-  const entries: MilkEntry[] = [];
-  for (let i = 0; i < window.localStorage.length; i++) {
-    const key = window.localStorage.key(i);
-    if (!key || !key.startsWith(MILK_MONTH_PREFIX)) continue;
-    try {
-      const raw = window.localStorage.getItem(key);
-      if (raw) entries.push(...(JSON.parse(raw) as MilkEntry[]));
-    } catch {
-      // skip corrupt month bucket
-    }
-  }
-  return entries;
-}
-
-function saveData(data: AppData) {
-  if (typeof window === "undefined") return;
-  const { milkEntries: _milkEntries, ...rest } = data;
-  void _milkEntries;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
-}
-
-function saveMilkEntriesByMonth(milkEntries: MilkEntry[]) {
-  if (typeof window === "undefined") return;
-  // clear existing month buckets first so removed/emptied months don't linger
-  for (let i = window.localStorage.length - 1; i >= 0; i--) {
-    const key = window.localStorage.key(i);
-    if (key && key.startsWith(MILK_MONTH_PREFIX)) window.localStorage.removeItem(key);
-  }
-  const byMonth = new Map<string, MilkEntry[]>();
-  for (const entry of milkEntries) {
-    const month = monthOf(entry.date);
-    const list = byMonth.get(month) ?? [];
-    list.push(entry);
-    byMonth.set(month, list);
-  }
-  for (const [month, list] of byMonth) {
-    window.localStorage.setItem(MILK_MONTH_PREFIX + month, JSON.stringify(list));
-  }
-}
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+async function pullRemote(societyId: string): Promise<AppData | null> {
+  try {
+    const res = await fetch(`/api/data?id=${encodeURIComponent(societyId)}`);
+    if (!res.ok) return null;
+    const { payload } = await res.json();
+    if (!payload) return null;
+    return { ...emptyData, ...(payload as Partial<AppData>) };
+  } catch {
+    return null;
+  }
+}
+
+async function pushRemote(societyId: string, data: AppData) {
+  const res = await fetch("/api/data", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: societyId, payload: data }),
+  });
+  if (!res.ok) throw new Error("Failed to save data");
 }
 
 interface DataContextValue {
@@ -95,36 +45,96 @@ interface DataContextValue {
   addMilkType: (m: Omit<MilkType, "id">) => void;
   updateMilkType: (id: string, m: Partial<MilkType>) => void;
   deleteMilkType: (id: string) => void;
-  addProduct: (p: Omit<Product, "id">) => void;
-  updateProduct: (id: string, p: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  addProductSale: (s: Omit<ProductSale, "id" | "createdAt">) => void;
-  updateProductSale: (id: string, s: Partial<ProductSale>) => void;
-  deleteProductSale: (id: string) => void;
   addExpense: (e: Omit<Expense, "id" | "createdAt">) => void;
   updateExpense: (id: string, e: Partial<Expense>) => void;
   deleteExpense: (id: string) => void;
-  addCustomer: (c: Omit<Customer, "id">) => void;
-  deleteCustomer: (id: string) => void;
-  resetAll: () => void;
+  syncStatus: "loading" | "syncing" | "synced" | "error";
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const { societyId } = useAuth();
+  const pathname = usePathname();
   const [data, setData] = useState<AppData>(emptyData);
   const [ready, setReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"loading" | "syncing" | "synced" | "error">("loading");
+  const skipNextPush = useRef(false);
+  const isPushing = useRef(false);
 
+  // Load this society's data straight from the database (via API routes) whenever the signed-in society changes.
   useEffect(() => {
-    setData(loadData());
-    setReady(true);
-  }, []);
+    if (!societyId) {
+      setData(emptyData);
+      setReady(false);
+      return;
+    }
+    let cancelled = false;
+    setReady(false);
+    setSyncStatus("loading");
+    (async () => {
+      const remote = await pullRemote(societyId);
+      if (cancelled) return;
+      // Only skip the next auto-push if we actually loaded existing data from the database.
+      // For a brand-new society (no remote row yet), push the defaults immediately so they're persisted.
+      skipNextPush.current = remote !== null;
+      setData(remote ?? emptyData);
+      setReady(true);
+      setSyncStatus("synced");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [societyId]);
 
+  // Every change is written straight to the database immediately, then re-fetched (GET) right
+  // after so the UI always reflects the server's confirmed state — no debounce, no local caching.
   useEffect(() => {
-    if (!ready) return;
-    saveData(data);
-    saveMilkEntriesByMonth(data.milkEntries);
-  }, [data, ready]);
+    if (!ready || !societyId) return;
+    if (skipNextPush.current) {
+      skipNextPush.current = false;
+      return;
+    }
+    let cancelled = false;
+    setSyncStatus("syncing");
+    isPushing.current = true;
+    (async () => {
+      try {
+        await pushRemote(societyId, data);
+        const fresh = await pullRemote(societyId);
+        if (!cancelled && fresh) {
+          skipNextPush.current = true;
+          setData(fresh);
+        }
+        if (!cancelled) setSyncStatus("synced");
+      } catch {
+        if (!cancelled) setSyncStatus("error");
+      } finally {
+        isPushing.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, ready, societyId]);
+
+  // Re-pull from the database on every page navigation so changes made elsewhere (another
+  // member, another tab) show up without a full reload — skipped while a local write is pending.
+  useEffect(() => {
+    if (!ready || !societyId || isPushing.current) return;
+    let cancelled = false;
+    (async () => {
+      const remote = await pullRemote(societyId);
+      if (cancelled || !remote) return;
+      skipNextPush.current = true;
+      setData(remote);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const addMilkEntry = useCallback((e: Omit<MilkEntry, "id" | "createdAt">) => {
     setData((d) => ({
@@ -156,36 +166,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setData((d) => ({ ...d, milkTypes: d.milkTypes.filter((m) => m.id !== id) }));
   }, []);
 
-  const addProduct = useCallback((p: Omit<Product, "id">) => {
-    setData((d) => ({ ...d, products: [...d.products, { ...p, id: uid() }] }));
-  }, []);
-
-  const updateProduct = useCallback((id: string, p: Partial<Product>) => {
-    setData((d) => ({ ...d, products: d.products.map((x) => (x.id === id ? { ...x, ...p } : x)) }));
-  }, []);
-
-  const deleteProduct = useCallback((id: string) => {
-    setData((d) => ({ ...d, products: d.products.filter((p) => p.id !== id) }));
-  }, []);
-
-  const addProductSale = useCallback((s: Omit<ProductSale, "id" | "createdAt">) => {
-    setData((d) => ({
-      ...d,
-      productSales: [...d.productSales, { ...s, id: uid(), createdAt: Date.now() }],
-    }));
-  }, []);
-
-  const updateProductSale = useCallback((id: string, s: Partial<ProductSale>) => {
-    setData((d) => ({
-      ...d,
-      productSales: d.productSales.map((x) => (x.id === id ? { ...x, ...s } : x)),
-    }));
-  }, []);
-
-  const deleteProductSale = useCallback((id: string) => {
-    setData((d) => ({ ...d, productSales: d.productSales.filter((s) => s.id !== id) }));
-  }, []);
-
   const addExpense = useCallback((e: Omit<Expense, "id" | "createdAt">) => {
     setData((d) => ({ ...d, expenses: [...d.expenses, { ...e, id: uid(), createdAt: Date.now() }] }));
   }, []);
@@ -196,18 +176,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const deleteExpense = useCallback((id: string) => {
     setData((d) => ({ ...d, expenses: d.expenses.filter((e) => e.id !== id) }));
-  }, []);
-
-  const addCustomer = useCallback((c: Omit<Customer, "id">) => {
-    setData((d) => ({ ...d, customers: [...d.customers, { ...c, id: uid() }] }));
-  }, []);
-
-  const deleteCustomer = useCallback((id: string) => {
-    setData((d) => ({ ...d, customers: d.customers.filter((c) => c.id !== id) }));
-  }, []);
-
-  const resetAll = useCallback(() => {
-    setData(emptyData);
   }, []);
 
   return (
@@ -221,18 +189,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         addMilkType,
         updateMilkType,
         deleteMilkType,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        addProductSale,
-        updateProductSale,
-        deleteProductSale,
         addExpense,
         updateExpense,
         deleteExpense,
-        addCustomer,
-        deleteCustomer,
-        resetAll,
+        syncStatus,
       }}
     >
       {children}

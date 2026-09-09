@@ -38,23 +38,23 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
-        <p className="text-sm text-neutral-500">{new Date(today + "T00:00:00").toDateString()}</p>
+        <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">Dashboard</h1>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">{new Date(today + "T00:00:00").toDateString()}</p>
       </div>
 
       {/* Session summary */}
       <Card>
-        <p className="mb-3 text-sm font-semibold text-neutral-700">Today&apos;s Sessions</p>
+        <p className="mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300">Today&apos;s Sessions</p>
         <div className="grid grid-cols-3 gap-3 text-center">
           {(["Morning", "Afternoon", "Night"] as Session[]).map((s) => (
             <div key={s}>
-              <p className="text-xs text-neutral-400">{s}</p>
-              <p className="mt-1 text-lg font-semibold text-neutral-900">{formatCurrency(bySession(s))}</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500">{s}</p>
+              <p className="mt-1 text-lg font-semibold text-neutral-900 dark:text-neutral-100">{formatCurrency(bySession(s))}</p>
             </div>
           ))}
         </div>
-        <div className="mt-3 border-t border-neutral-200 pt-3 text-center">
-          <p className="text-xs text-neutral-400">Today&apos;s Total</p>
+        <div className="mt-3 border-t border-neutral-200 dark:border-neutral-800 pt-3 text-center">
+          <p className="text-xs text-neutral-400 dark:text-neutral-500">Today&apos;s Total</p>
           <p className="text-xl font-bold text-emerald-600">{formatCurrency(milkAmountToday)}</p>
         </div>
       </Card>
@@ -64,20 +64,20 @@ export default function Dashboard() {
         <StatCard label="Milk Qty Today" value={milkQtyToday.toFixed(1)} sub="Litres" />
         <StatCard label="Milk Sales Today" value={formatCurrency(milkAmountToday)} />
         <StatCard label="Month Total" value={formatCurrency(monthTotal)} />
-        <StatCard label="Pending Payments" value={formatCurrency(pendingTotal)} accent="text-amber-600" />
+        <StatCard label="Pending Payments" value={formatCurrency(pendingTotal)} accent="text-amber-600 dark:text-amber-400" />
       </div>
 
       {/* Milk type breakdown */}
       <Card>
-        <p className="mb-3 text-sm font-semibold text-neutral-700">Milk Type Breakdown (Today)</p>
+        <p className="mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300">Milk Type Breakdown (Today)</p>
         {milkTypeStats.every((m) => m.qty === 0) ? (
           <EmptyState text="No milk entries yet today." />
         ) : (
           <div className="space-y-2">
             {milkTypeStats.map((m) => (
               <div key={m.name} className="flex items-center justify-between text-sm">
-                <span className="text-neutral-600">{m.name}</span>
-                <span className="text-neutral-900">
+                <span className="text-neutral-600 dark:text-neutral-300">{m.name}</span>
+                <span className="text-neutral-900 dark:text-neutral-100">
                   {m.qty} {m.unit} · {formatCurrency(m.amount)}
                 </span>
               </div>
@@ -88,7 +88,7 @@ export default function Dashboard() {
 
       {/* Quick actions */}
       <div>
-        <p className="mb-3 text-sm font-semibold text-neutral-700">Quick Actions</p>
+        <p className="mb-3 text-sm font-semibold text-neutral-700 dark:text-neutral-300">Quick Actions</p>
         <div className="grid grid-cols-3 gap-3">
           <QuickAction href="/milk?add=1" label="Add Milk" />
           <QuickAction href="/bill" label="Generate Bill" />
@@ -103,9 +103,9 @@ function QuickAction({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-center rounded-xl border border-neutral-200 bg-white p-4 text-center shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-50"
+      className="flex items-center justify-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white p-4 text-center shadow-sm transition-colors hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
     >
-      <span className="text-xs font-medium text-neutral-700">{label}</span>
+      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{label}</span>
     </Link>
   );
 }
