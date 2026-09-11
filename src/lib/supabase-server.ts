@@ -9,3 +9,4 @@ export const supabaseServer: SupabaseClient | null =
 
 export const DATA_TABLE = "milk_manager_data";
 export const SOCIETIES_TABLE = "milk_manager_societies";
+export const AUDIT_TABLE = "milk_manager_audit_log";

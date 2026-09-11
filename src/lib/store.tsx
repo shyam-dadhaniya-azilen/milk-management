@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { usePathname } from "next/navigation";
 import { AppData, Expense, MilkEntry, MilkType } from "./types";
 import { useAuth } from "./auth";
+import { logAudit } from "./audit";
 
 const emptyData: AppData = {
   milkTypes: [],
@@ -54,13 +55,19 @@ interface DataContextValue {
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const { societyId } = useAuth();
+  const { societyId, user } = useAuth();
   const pathname = usePathname();
   const [data, setData] = useState<AppData>(emptyData);
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"loading" | "syncing" | "synced" | "error">("loading");
   const skipNextPush = useRef(false);
   const isPushing = useRef(false);
+  // Tracks the latest data outside of React's setState batching so audit entries can capture
+  // the "before" state of an edited/deleted record without depending on stale closures.
+  const dataRef = useRef<AppData>(emptyData);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   // Load this society's data straight from the database (via API routes) whenever the signed-in society changes.
   useEffect(() => {
@@ -136,47 +143,173 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  const addMilkEntry = useCallback((e: Omit<MilkEntry, "id" | "createdAt">) => {
-    setData((d) => ({
-      ...d,
-      milkEntries: [...d.milkEntries, { ...e, id: uid(), createdAt: Date.now() }],
-    }));
-  }, []);
+  const addMilkEntry = useCallback(
+    (e: Omit<MilkEntry, "id" | "createdAt">) => {
+      const entry: MilkEntry = { ...e, id: uid(), createdAt: Date.now() };
+      setData((d) => ({ ...d, milkEntries: [...d.milkEntries, entry] }));
+      if (societyId && user)
+        logAudit({
+          societyId,
+          user,
+          action: "create",
+          entity: "milkEntry",
+          entityId: entry.id,
+          summary: `Added milk entry for ${entry.customer}`,
+          after: entry,
+        });
+    },
+    [societyId, user]
+  );
 
-  const updateMilkEntry = useCallback((id: string, e: Partial<MilkEntry>) => {
-    setData((d) => ({
-      ...d,
-      milkEntries: d.milkEntries.map((m) => (m.id === id ? { ...m, ...e } : m)),
-    }));
-  }, []);
+  const updateMilkEntry = useCallback(
+    (id: string, e: Partial<MilkEntry>) => {
+      const before = dataRef.current.milkEntries.find((m) => m.id === id);
+      setData((d) => ({
+        ...d,
+        milkEntries: d.milkEntries.map((m) => (m.id === id ? { ...m, ...e } : m)),
+      }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "update",
+          entity: "milkEntry",
+          entityId: id,
+          summary: `Updated milk entry for ${before.customer}`,
+          before,
+          after: { ...before, ...e },
+        });
+    },
+    [societyId, user]
+  );
 
-  const deleteMilkEntry = useCallback((id: string) => {
-    setData((d) => ({ ...d, milkEntries: d.milkEntries.filter((m) => m.id !== id) }));
-  }, []);
+  const deleteMilkEntry = useCallback(
+    (id: string) => {
+      const before = dataRef.current.milkEntries.find((m) => m.id === id);
+      setData((d) => ({ ...d, milkEntries: d.milkEntries.filter((m) => m.id !== id) }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "delete",
+          entity: "milkEntry",
+          entityId: id,
+          summary: `Deleted milk entry for ${before.customer}`,
+          before,
+        });
+    },
+    [societyId, user]
+  );
 
-  const addMilkType = useCallback((m: Omit<MilkType, "id">) => {
-    setData((d) => ({ ...d, milkTypes: [...d.milkTypes, { ...m, id: uid() }] }));
-  }, []);
+  const addMilkType = useCallback(
+    (m: Omit<MilkType, "id">) => {
+      const milkType: MilkType = { ...m, id: uid() };
+      setData((d) => ({ ...d, milkTypes: [...d.milkTypes, milkType] }));
+      if (societyId && user)
+        logAudit({
+          societyId,
+          user,
+          action: "create",
+          entity: "milkType",
+          entityId: milkType.id,
+          summary: `Added milk type ${milkType.name}`,
+          after: milkType,
+        });
+    },
+    [societyId, user]
+  );
 
-  const updateMilkType = useCallback((id: string, m: Partial<MilkType>) => {
-    setData((d) => ({ ...d, milkTypes: d.milkTypes.map((x) => (x.id === id ? { ...x, ...m } : x)) }));
-  }, []);
+  const updateMilkType = useCallback(
+    (id: string, m: Partial<MilkType>) => {
+      const before = dataRef.current.milkTypes.find((x) => x.id === id);
+      setData((d) => ({ ...d, milkTypes: d.milkTypes.map((x) => (x.id === id ? { ...x, ...m } : x)) }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "update",
+          entity: "milkType",
+          entityId: id,
+          summary: `Updated milk type ${before.name}`,
+          before,
+          after: { ...before, ...m },
+        });
+    },
+    [societyId, user]
+  );
 
-  const deleteMilkType = useCallback((id: string) => {
-    setData((d) => ({ ...d, milkTypes: d.milkTypes.filter((m) => m.id !== id) }));
-  }, []);
+  const deleteMilkType = useCallback(
+    (id: string) => {
+      const before = dataRef.current.milkTypes.find((x) => x.id === id);
+      setData((d) => ({ ...d, milkTypes: d.milkTypes.filter((m) => m.id !== id) }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "delete",
+          entity: "milkType",
+          entityId: id,
+          summary: `Deleted milk type ${before.name}`,
+          before,
+        });
+    },
+    [societyId, user]
+  );
 
-  const addExpense = useCallback((e: Omit<Expense, "id" | "createdAt">) => {
-    setData((d) => ({ ...d, expenses: [...d.expenses, { ...e, id: uid(), createdAt: Date.now() }] }));
-  }, []);
+  const addExpense = useCallback(
+    (e: Omit<Expense, "id" | "createdAt">) => {
+      const expense: Expense = { ...e, id: uid(), createdAt: Date.now() };
+      setData((d) => ({ ...d, expenses: [...d.expenses, expense] }));
+      if (societyId && user)
+        logAudit({
+          societyId,
+          user,
+          action: "create",
+          entity: "expense",
+          entityId: expense.id,
+          summary: `Added expense: ${expense.description || expense.category}`,
+          after: expense,
+        });
+    },
+    [societyId, user]
+  );
 
-  const updateExpense = useCallback((id: string, e: Partial<Expense>) => {
-    setData((d) => ({ ...d, expenses: d.expenses.map((x) => (x.id === id ? { ...x, ...e } : x)) }));
-  }, []);
+  const updateExpense = useCallback(
+    (id: string, e: Partial<Expense>) => {
+      const before = dataRef.current.expenses.find((x) => x.id === id);
+      setData((d) => ({ ...d, expenses: d.expenses.map((x) => (x.id === id ? { ...x, ...e } : x)) }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "update",
+          entity: "expense",
+          entityId: id,
+          summary: `Updated expense: ${before.description || before.category}`,
+          before,
+          after: { ...before, ...e },
+        });
+    },
+    [societyId, user]
+  );
 
-  const deleteExpense = useCallback((id: string) => {
-    setData((d) => ({ ...d, expenses: d.expenses.filter((e) => e.id !== id) }));
-  }, []);
+  const deleteExpense = useCallback(
+    (id: string) => {
+      const before = dataRef.current.expenses.find((x) => x.id === id);
+      setData((d) => ({ ...d, expenses: d.expenses.filter((e) => e.id !== id) }));
+      if (societyId && user && before)
+        logAudit({
+          societyId,
+          user,
+          action: "delete",
+          entity: "expense",
+          entityId: id,
+          summary: `Deleted expense: ${before.description || before.category}`,
+          before,
+        });
+    },
+    [societyId, user]
+  );
 
   return (
     <DataContext.Provider

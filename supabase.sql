@@ -26,3 +26,25 @@ with
 create policy "allow anon read/write" on milk_manager_societies for all using (true)
 with
     check (true);
+
+-- Audit trail: records who (which logged-in member) created/updated/deleted what, and when.
+create table if not exists milk_manager_audit_log (
+    id uuid primary key default gen_random_uuid(),
+    society_id text not null,
+    user_name text not null,
+    action text not null, -- create | update | delete
+    entity text not null, -- milkEntry | milkType | expense | member
+    entity_id text not null,
+    summary text,
+    before jsonb,
+    after jsonb,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists milk_manager_audit_log_society_idx on milk_manager_audit_log (society_id, created_at desc);
+
+alter table milk_manager_audit_log enable row level security;
+
+create policy "allow anon read/write" on milk_manager_audit_log for all using (true)
+with
+    check (true);

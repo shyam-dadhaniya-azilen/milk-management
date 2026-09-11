@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { logAudit } from "./audit";
 
 const AUTH_KEY = "milk-management-auth";
 
@@ -194,6 +195,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const updated: Society = { ...society, members: [...society.members, { name, password }] };
     setSocieties((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     pushSocietyAndRefresh(updated, setSocieties);
+    logAudit({
+      societyId: auth.societyId,
+      user: auth.user,
+      action: "create",
+      entity: "member",
+      entityId: name,
+      summary: `Added member ${name}`,
+      after: { name },
+    });
     return { ok: true };
   };
 
@@ -213,6 +223,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     setSocieties((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     pushSocietyAndRefresh(updated, setSocieties);
+    logAudit({
+      societyId: auth.societyId,
+      user: auth.user,
+      action: "update",
+      entity: "member",
+      entityId: oldName,
+      summary: trimmedName !== oldName ? `Renamed member ${oldName} to ${trimmedName}` : `Updated member ${oldName}`,
+      before: { name: oldName },
+      after: { name: trimmedName },
+    });
 
     if (auth.user === oldName) {
       const next: StoredAuth = { user: trimmedName, societyId: auth.societyId };
@@ -229,6 +249,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const updated: Society = { ...society, members: society.members.filter((m) => m.name !== username) };
     setSocieties((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     pushSocietyAndRefresh(updated, setSocieties);
+    logAudit({
+      societyId: auth.societyId,
+      user: auth.user,
+      action: "delete",
+      entity: "member",
+      entityId: username,
+      summary: `Removed member ${username}`,
+      before: { name: username },
+    });
   };
 
   const logout = () => {
